@@ -1,0 +1,143 @@
+// Import country boundaries feature collection.
+var dataset = ee.FeatureCollection('USDOS/LSIB_SIMPLE/2017');
+
+// Apply filter where country name equals 
+var CzechiaBorder = dataset.filter(ee.Filter.eq('country_na', 'Indonesia'));
+
+// Print new "ugandaBorder" object and explorer features and properties.
+// There should only be one feature representing
+print(CzechiaBorder);
+
+// Add outline to the Map as a layer.
+Map.centerObject(CzechiaBorder, 6);
+Map.addLayer(CzechiaBorder);
+
+
+// #############################################################################
+
+
+// Import LST image collection.
+var modis = ee.ImageCollection('MODIS/006/MOD11A1');
+
+// Define a date range of interest; here, a start date is defined and the end
+// date is determined by advancing 1 year from the start date.
+var start = ee.Date('2021-01-01');
+var dateRange = ee.DateRange(start, start.advance(1, 'year'));
+
+// Filter the LST collection to include only images intersecting the desired
+// date range.
+var mod11a2 = modis.filterDate(dateRange);
+
+// Select only the 1km day LST data band.
+var modLSTday = mod11a2.select('LST_Day_1km');
+
+
+// #############################################################################
+
+
+// Scale to Kelvin and convert to Celsius, set image acquisition time.
+var modLSTc = modLSTday.map(function(img) {
+  return img
+    .multiply(0.02)
+    .subtract(273.15)
+    .copyProperties(img, ['system:time_start']);
+});
+
+
+// #############################################################################
+
+
+// Chart time series of LST for Uganda in 2015.
+var ts1 = ui.Chart.image.series({
+  imageCollection: modLSTc,
+  region: CzechiaBorder,
+  reducer: ee.Reducer.mean(),
+  scale: 1000,
+  xProperty: 'system:time_start'})
+  .setOptions({
+     title: 'LST 2021 Time Series',
+     vAxis: {title: 'LST Celsius'}});
+print(ts1);
+
+
+// #############################################################################
+
+
+// Calculate 8-day mean temperature for Uganda in 2015.
+var clippedLSTc = modLSTc.mean().clip(CzechiaBorder);
+
+// Add clipped image layer to the map.
+Map.addLayer(clippedLSTc, {
+  min: 20, max: 40,
+  palette: ['blue', 'limegreen', 'yellow', 'darkorange', 'red']},
+  'Mean temperature, 2021');
+
+
+// #############################################################################
+
+
+// Export the image to your Google Drive account.
+Export.image.toDrive({
+  image: clippedLSTc,
+  description: 'LST_Celsius_ug',
+  folder: 'my_folder',
+  region: CzechiaBorder,
+  scale: 1000,
+  crs: 'EPSG:4326',
+  maxPixels: 1e10});
+
+//add a legend
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px',
+  }
+});
+ 
+// Create legend title
+var legendTitle = ui.Label('Legend');
+ 
+// Add the title to the panel
+legend.add(legendTitle);
+ 
+// Creates and styles 1 row of the legend.
+var makeRow = function(color, name) {
+ 
+      // Create the label that is actually the colored box.
+      var colorBox = ui.Label({
+        style: {
+          backgroundColor: color,
+          // Use padding to give the box height and width.
+          padding: '8px',
+          margin: '0 0 4px 0'
+        }
+      });
+ 
+      // Create the label filled with the description text.
+      var description = ui.Label({
+        value: name,
+        style: {margin: '0 0 4px 6px'}
+      });
+ 
+      // return the panel
+      return ui.Panel({
+        widgets: [colorBox, description],
+        layout: ui.Panel.Layout.Flow('horizontal')
+      });
+};
+ 
+//  Palette with the colors
+var palette =['2A79EB', '2AEBD9', 'EBD12A', 'EBA52A','FE1506'];
+ 
+// name of the legend
+var names = ['-20-0 C','0-10 C','10-20 C', '20-30 C', '30-40 C'];
+ 
+// Add color and and names
+for (var i = 0; i < 5; i++) {
+  legend.add(makeRow(palette[i], names[i]));
+  }  
+
+// legend.add(panel);
+ 
+// add legend to map (alternatively you can also print the legend to the console)
+Map.add(legend);
